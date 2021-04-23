@@ -37,7 +37,7 @@ class LendingClub(Dataset):
 
     resources = [
         ("lending_club.accepted_2007_to_2018Q4.csv.gz", 'e2d05a00a4b854a58e67fdaacebb2b63'),
-        ("lending_club.rejected_2007_to_2018Q4.csv.gz", 'e4fb3f2e3dd1dcc16c7efdcf749cc84c'),
+        ("lending_club.rejected_2007_to_2018Q4.csv.gz", '008280a859da83b2fa5ad68cc85f68f7'),
     ]
 
     numeric_features = ['dti', 'loan_amnt', 'fico']
