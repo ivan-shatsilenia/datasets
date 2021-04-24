@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 from pathlib import Path
 from datetime import datetime
 from urllib.error import URLError
@@ -9,6 +10,51 @@ import pandas as pd
 from torch.utils.data import Dataset
 from torchvision.datasets.utils import (check_integrity,
                                         download_and_extract_archive)
+
+
+@lru_cache()
+def load_accepted(path):
+    """Load 36 month loans."""
+    df = pd.read_csv(path, usecols=['issue_d',
+                                    'fico_range_low',
+                                    'fico_range_high',
+                                    'dti',
+                                    'loan_amnt',
+                                    'emp_length',
+                                    'addr_state',
+                                    'term',
+                                    'loan_status'])
+
+    df['date'] = pd.to_datetime(df['issue_d'], format='%b-%Y')
+    df['fico'] = 0.5 * (df['fico_range_low'] + df['fico_range_high'])
+
+    # Filter based on loan term
+    df = df.loc[df.term == ' 36 months', :]
+    return df
+
+@lru_cache()
+def load_rejected(path):
+    """"Load rejected applications"""
+
+    def p2f(x):
+        return float(x.strip('%')) / 100
+
+    df = pd.read_csv(path, usecols=['Debt-To-Income Ratio',
+                                    'Amount Requested',
+                                    'Risk_Score',
+                                    'Employment Length',
+                                    'State',
+                                    'Application Date'],
+                     converters={'Debt-To-Income Ratio': p2f})
+
+    df = df.rename(columns={'Debt-To-Income Ratio': 'dti',
+                            'Amount Requested': 'loan_amnt',
+                            'Risk_Score': 'fico',
+                            'Employment Length': 'emp_length',
+                            'State': 'addr_state',
+                            'Application Date': 'date'})
+    df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+    return df
 
 
 class LendingClub(Dataset):
@@ -77,7 +123,7 @@ class LendingClub(Dataset):
         self.X_numeric, self.X_cat, self.y = self._load_data()
         assert len(self.X_numeric) == len(self.X_cat) == len(self.y)
 
-    def __getitem__(self, index: int) -> Dict[str, Any]:
+    def __getitem__(self, index: Any) -> Dict[str, Any]:
         """
         Args:
             index (int): Index
@@ -112,53 +158,9 @@ class LendingClub(Dataset):
         file_name = Path(self.resources[i][0]).stem
         return os.path.join(self.raw_folder, file_name)
 
-    def _load_accepted(self):
-        """Load 36 month loans."""
-        df = pd.read_csv(
-            self._get_path(),
-            usecols=['issue_d',
-                     'fico_range_low',
-                     'fico_range_high',
-                     'dti',
-                     'loan_amnt',
-                     'emp_length',
-                     'addr_state',
-                     'term',
-                     'loan_status'],
-        )
-
-        df['date'] = pd.to_datetime(df['issue_d'], format='%b-%Y')
-        df['fico'] = 0.5 * (df['fico_range_low'] + df['fico_range_high'])
-
-        # Filter based on loan term
-        df = df.loc[df.term == ' 36 months', :]
-        return df
-
-    def _load_rejected(self):
-        """"Load rejected applications"""
-        def p2f(x):
-            return float(x.strip('%')) / 100
-        df = pd.read_csv(
-            self._get_path(),
-            usecols=['Debt-To-Income Ratio',
-                     'Amount Requested',
-                     'Risk_Score',
-                     'Employment Length',
-                     'State',
-                     'Application Date'],
-            converters={'Debt-To-Income Ratio': p2f})
-        df = df.rename(columns={'Debt-To-Income Ratio': 'dti',
-                                'Amount Requested': 'loan_amnt',
-                                'Risk_Score': 'fico',
-                                'Employment Length': 'emp_length',
-                                'State': 'addr_state',
-                                'Application Date': 'date'
-                                })
-        df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
-        return df
-
     def _load_data(self):
-        df = self._load_accepted() if self.accepted else self._load_rejected()
+        path = self._get_path()
+        df = load_accepted(path) if self.accepted else load_rejected(path)
         df = df.loc[df.date >= self.date_start, :]
         df = df.loc[df.date < self.date_end, :]
 
