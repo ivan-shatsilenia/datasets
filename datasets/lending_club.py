@@ -94,7 +94,7 @@ class LendingClub(Dataset):
         return sample
 
     def __len__(self) -> int:
-        return len(self.X)
+        return len(self.y)
 
     @property
     def raw_folder(self) -> str:
