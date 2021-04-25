@@ -11,10 +11,10 @@ from torch.utils.data import Dataset
 from torchvision.datasets.utils import (check_integrity,
                                         download_and_extract_archive)
 
-
 @lru_cache()
 def load_accepted(path):
     """Load 36 month loans."""
+    print(f"Reading {path}")
     df = pd.read_csv(path, usecols=['issue_d',
                                     'fico_range_low',
                                     'fico_range_high',
@@ -39,6 +39,7 @@ def load_rejected(path):
     def p2f(x):
         return float(x.strip('%')) / 100
 
+    print(f"Reading {path}")
     df = pd.read_csv(path, usecols=['Debt-To-Income Ratio',
                                     'Amount Requested',
                                     'Risk_Score',
@@ -105,7 +106,7 @@ class LendingClub(Dataset):
         accepted: bool=True,
         partition: Optional[str]=None,
         transform: Optional[Callable]=None,
-        download: bool = False
+        download: bool = False,
     ) -> None:
         self.root = root
         self.partition = partition
@@ -159,14 +160,16 @@ class LendingClub(Dataset):
         return os.path.join(self.raw_folder, file_name)
 
     def _load_data(self):
-        path = self._get_path()
-        df = load_accepted(path) if self.accepted else load_rejected(path)
+        read_data = load_accepted if self.accepted else load_rejected
+        df = read_data(self._get_path())
         df = df.loc[df.date >= self.date_start, :]
         df = df.loc[df.date < self.date_end, :]
 
+        # Remove rows with missing values
+        df = df.dropna()
+
         # Quarter of loan issuance or loan application
-        df['quarter'] = pd.PeriodIndex(pd.to_datetime(df['date']),
-                                       freq='Q').astype(str)
+        df['quarter'] = pd.PeriodIndex(df['date'], freq='Q').astype(str)
 
         # Define target variable
         df['target'] = np.nan
@@ -175,7 +178,6 @@ class LendingClub(Dataset):
             df.loc[df.loan_status == 'Charged Off', 'target'] = 1
             df.loc[df.loan_status == 'Fully Paid', 'target'] = 0
             df = df.dropna()
-            df['target'] = df['target'].astype(int)
 
         if self.partition == 'train':
             df = df.loc[~df.quarter.isin([self.test_set_quarter,
