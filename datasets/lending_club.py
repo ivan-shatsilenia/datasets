@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from datetime import datetime
 from urllib.error import URLError
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
@@ -86,9 +86,10 @@ class LendingClub(Dataset):
         ("lending_club.accepted_2007_to_2018Q4.csv.gz", 'e2d05a00a4b854a58e67fdaacebb2b63'),
         ("lending_club.rejected_2007_to_2018Q4.csv.gz", '008280a859da83b2fa5ad68cc85f68f7'),
     ]
-
-    numeric_features = ['dti', 'loan_amnt', 'fico']
-    categorical_features = ['emp_length', 'addr_state']
+    feature_names = ['dti', 'loan_amnt', 'fico', 'emp_length', 'addr_state']
+    numeric_cols = [0, 1, 2]
+    categorical_cols = [3, 4]
+    oridinal_cols = []
 
     # Keep loans (rejected applications) created in this time window
     date_start = datetime(2009, 1, 1)
@@ -100,18 +101,11 @@ class LendingClub(Dataset):
     # second most recent quarter
     dev_set_quarter = '2012Q2'
 
-    def __init__(
-        self,
-        root: str,
-        accepted: bool=True,
-        partition: Optional[str]=None,
-        transform: Optional[Callable]=None,
-        download: bool = False,
-    ) -> None:
+    def __init__(self, root: str, accepted: bool=True,
+                 partition: Optional[str]=None, download: bool = False) -> None:
         self.root = root
         self.partition = partition
         self.accepted = accepted
-        self.transform = transform
         assert partition in {'train', 'dev', 'test', None}
 
         if download:
@@ -121,24 +115,17 @@ class LendingClub(Dataset):
             raise RuntimeError('Dataset not found.' +
                                ' You can use download=True to download it')
 
-        self.X_numeric, self.X_cat, self.y = self._load_data()
-        assert len(self.X_numeric) == len(self.X_cat) == len(self.y)
+        self.X, self.y = self._load_data()
+        assert len(self.X) == len(self.y)
 
-    def __getitem__(self, index: Any) -> Dict[str, Any]:
+    def __getitem__(self, index: Any) -> Tuple[Any, Any]:
         """
         Args:
             index (int): Index
         Returns:
-            dict with feature arrays and targets
+            A tuple (x, y)
         """
-        sample = {'X_numeric': self.X_numeric[index, :],
-                  'X_categorical': self.X_cat[index, :],
-                  'target': self.y[index]}
-
-        if self.transform:
-            sample = self.transform(sample)
-
-        return sample
+        return self.X[index, :], self.y[index]
 
     def __len__(self) -> int:
         return len(self.y)
@@ -188,9 +175,10 @@ class LendingClub(Dataset):
         if self.partition == 'test':
             df = df.loc[df.quarter == self.test_set_quarter, :]
 
-        return (df[self.numeric_features].values,
-                df[self.categorical_features].values,
-                df['target'].values)
+        X = df[self.feature_names].values
+        y = df['target'].values
+        return X, y
+
 
     def download(self) -> None:
         """Download data if it doesn't exist already."""
